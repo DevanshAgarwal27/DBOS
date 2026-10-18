@@ -1,0 +1,17 @@
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+
+# C++ compiled binaries
+*.exe
+*.o
+*.obj
+
+# Sensitive environment variables
+.env
+
+# Temporary backups & system files
+*.sql.bak
+.vscode/
+
