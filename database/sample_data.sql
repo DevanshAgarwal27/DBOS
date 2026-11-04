@@ -45,14 +45,14 @@ INSERT INTO CHARGER (charger_id, station_id, connector_type, power_capacity, sta
 (9, 4, 'Type 2', 22.00, 'AVAILABLE');
 
 -- 6. CHARGING_REQUEST Records
-INSERT INTO CHARGING_REQUEST (request_id, ev_id, arrival_time, required_energy, requested_power, soc_at_request, process_state) VALUES
-(1, 1, '2026-10-12 18:00:00', 20.00,  50.00, 20.00, 'COMPLETED'),
-(2, 2, '2026-10-12 19:30:00', 35.00,  50.00, 18.00, 'RUNNING'),
-(3, 4, '2026-10-12 19:45:00', 20.00,  50.00, 30.00, 'RUNNING'),
-(4, 5, '2026-10-12 20:00:00', 40.00,  40.00, 15.00, 'RUNNING'),
-(5, 3, '2026-10-12 20:15:00', 10.00,  22.00, 70.00, 'READY'),
-(6, 6, '2026-10-12 20:20:00', 12.00,  50.00, 55.00, 'WAITING'),
-(7, 1, '2026-10-12 17:00:00', 50.00, 100.00, 10.00, 'REJECTED');
+INSERT INTO CHARGING_REQUEST (request_id, ev_id, arrival_time, required_energy, requested_power, soc_at_request, is_reserved, process_state) VALUES
+(1, 1, '2026-10-12 18:00:00', 20.00,  50.00, 20.00, FALSE, 'COMPLETED'),
+(2, 2, '2026-10-12 19:30:00', 35.00,  50.00, 18.00, TRUE,  'RUNNING'),
+(3, 4, '2026-10-12 19:45:00', 20.00,  50.00, 30.00, FALSE, 'RUNNING'),
+(4, 5, '2026-10-12 20:00:00', 40.00,  40.00, 15.00, FALSE, 'RUNNING'),
+(5, 3, '2026-10-12 20:15:00', 10.00,  22.00, 70.00, TRUE,  'READY'),
+(6, 6, '2026-10-12 20:20:00', 12.00,  50.00, 55.00, FALSE, 'WAITING'),
+(7, 1, '2026-10-12 17:00:00', 50.00, 100.00, 10.00, FALSE, 'REJECTED');
 
 -- 7. RESOURCE_ALLOCATION Records
 INSERT INTO RESOURCE_ALLOCATION (allocation_id, request_id, charger_id, allocated_power, allocation_time, release_time, status) VALUES

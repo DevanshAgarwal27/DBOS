@@ -62,21 +62,23 @@ int main() {
         total_wt  += p[idx].wt;
     }
 
-    cout << "\nProcess ID\tEV ID\tEV Model\tAT\tBT\tPriority(SoC)\tCT\tTAT\tWT\n";
+    cout << "\nProcess ID\tEV ID\tEV Model\tAT\tBT\tPriority Score\tCT\tTAT\tWT\n";
     cout << "------------------------------------------------------------------------------------------------\n";
     for (int i = 0; i < n; i++) {
         int k = order[i];
         cout << "P" << p[k].pid << "\t\t" << p[k].ev_id << "\t" << p[k].model << "\t"
-             << p[k].at << "\t" << p[k].bt << "\t" << p[k].pr << "%\t\t"
+             << p[k].at << "\t" << p[k].bt << "\t" << p[k].pr << "\t\t"
              << p[k].ct << "\t" << p[k].tat << "\t" << p[k].wt << "\n";
     }
     cout << "------------------------------------------------------------------------------------------------\n";
 
     cout << "\nSelected Algorithm    : Non-Preemptive Priority Scheduling\n";
-    cout << "Priority Rule         : Lower SoC % = Higher Priority\n";
+    cout << "Priority Rule         : Lower Score = Higher Priority\n";
+    cout << "                        - Tier 1 (<100): Pre-booked Reservations & Critical Emergencies (SoC <= 20%)\n";
+    cout << "                        - Tier 2 (>=100): Standard Walk-in Requests\n";
     cout << "Actual Execution Order: ";
     for (int i = 0; i < n; i++) {
-        cout << "P" << p[order[i]].pid << " (" << p[order[i]].pr << "%)" << (i + 1 < n ? " -> " : "");
+        cout << "P" << p[order[i]].pid << " [Score: " << p[order[i]].pr << "]" << (i + 1 < n ? " -> " : "");
     }
     cout << "\nAverage Turnaround Time (TAT): " << (total_tat / n) << " hours\n";
     cout << "Average Waiting Time    (WT) : " << (total_wt / n) << " hours\n\n";

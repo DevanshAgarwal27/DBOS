@@ -98,6 +98,7 @@ def get_waiting_requests():
             r.required_energy,
             r.requested_power,
             r.soc_at_request,
+            r.is_reserved,
             r.process_state
         FROM CHARGING_REQUEST r
         JOIN EV e ON r.ev_id = e.ev_id
@@ -107,9 +108,17 @@ def get_waiting_requests():
     try:
         rows = execute_select(query)
         return rows if rows is not None else []
-    except Exception as e:
-        print(f"[ERROR] Database error fetching waiting requests: {e}")
-        return []
+    except Exception:
+        try:
+            fallback_query = query.replace("r.is_reserved,\n", "")
+            rows = execute_select(fallback_query)
+            if rows:
+                for row in rows:
+                    row["is_reserved"] = False
+            return rows if rows is not None else []
+        except Exception as e:
+            print(f"[ERROR] Database error fetching waiting requests: {e}")
+            return []
 
 
 def get_resource_allocation_inputs():

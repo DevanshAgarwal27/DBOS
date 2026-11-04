@@ -57,7 +57,20 @@ def format_for_scheduler(requests):
         at = round((r["arrival_time"] - earliest).total_seconds() / 3600.0, 2)
         power = float(r["requested_power"])
         bt = round(float(r["required_energy"]) / power, 2) if power > 0 else 0.0
-        pr = round(float(r.get("soc_at_request", 50.0)), 1)
+        
+        soc = float(r.get("soc_at_request", 50.0))
+        is_reserved = bool(r.get("is_reserved", False))
+
+        # OS Two-Tier Priority Score (Lower Score = Higher Priority):
+        # Tier 1 (< 100): Pre-booked reservations & Critical Emergencies (SoC <= 20%)
+        # Tier 2 (>= 100): Standard Walk-in requests
+        if is_reserved:
+            pr = round(soc * 0.5, 1)       # Pre-booked reservation priority boost (Score 0-50)
+        elif soc <= 20.0:
+            pr = round(soc, 1)             # Emergency low battery (Score 0-20)
+        else:
+            pr = round(100.0 + soc, 1)     # Standard walk-in (Score 120-200)
+
         lines.append(f"{pid} {ev_id} {model} {at:.2f} {bt:.2f} {pr:.1f}")
 
     return "\n".join(lines) + "\n"
@@ -91,7 +104,7 @@ def run_intelligent_auto_scheduler():
     """
     Option [7]: Intelligent Adaptive Scheduler.
     Automatically decides whether to use Priority, SJF, or FCFS:
-      - Low battery (SoC <= 20%): Priority Scheduling
+      - Prior Reservations or Critical Battery (SoC <= 20%): Priority Scheduling
       - High congestion (>= 3 waiting): SJF
       - Normal load: FCFS
     """
@@ -100,12 +113,18 @@ def run_intelligent_auto_scheduler():
         print("\nNo waiting charging requests found in the database queue.\n")
         return
 
+    reserved = [r for r in requests if bool(r.get("is_reserved", False))]
     critical = [r for r in requests if float(r.get("soc_at_request", 100)) <= 20]
 
-    if critical:
+    if reserved or critical:
         selected = "priority"
         algo_name = "Non-Preemptive Priority Scheduling"
-        reason = "Emergency alert: One or more EVs have critical battery (SoC <= 20%)."
+        if reserved and critical:
+            reason = f"Priority Override: {len(reserved)} pre-booked reservation(s) and {len(critical)} critical battery emergency(ies) in queue."
+        elif reserved:
+            reason = f"Reservation Priority: {len(reserved)} pre-booked charger slot(s) must be honored."
+        else:
+            reason = "Emergency Alert: One or more EVs have critical battery (SoC <= 20%)."
     elif len(requests) >= 3:
         selected = "sjf"
         algo_name = "Non-Preemptive Shortest Job First (SJF)"

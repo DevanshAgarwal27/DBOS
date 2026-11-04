@@ -90,12 +90,13 @@ Every incoming EV charging request is treated as an OS Process:
 ### 2. CPU Scheduling Algorithms
 * **First-Come, First-Served (FCFS):** Dispatches processes strictly by Arrival Time ($AT$).
 * **Non-Preemptive Shortest Job First (SJF):** Dispatches the request with the smallest service duration ($BT$), minimizing system average waiting time.
-* **Non-Preemptive Priority Scheduling:** Prioritizes vehicles with critical battery levels:
-  $$\text{Priority Rule: Lower Battery SoC \%} = \text{Higher Dispatch Priority}$$
+* **Non-Preemptive Priority Scheduling:** Implements a two-tier priority model:
+  * **Tier 1 (High Priority):** Pre-booked reservations (`is_reserved = TRUE`) and emergency vehicles with critical battery ($\text{SoC} \le 20\%$).
+  * **Tier 2 (Standard Priority):** Walk-in vehicles prioritized by lowest battery SoC.
 * **Intelligent Adaptive Auto-Scheduler:** Evaluates queue telemetry in real time:
-  * **Critical Priority:** If any waiting EV has $\text{SoC} \le 20\%$.
-  * **SJF Congestion Mode:** If waiting queue size $\ge 3$ vehicles.
-  * **FCFS Normal Mode:** Under light load without critical emergencies.
+  * **Priority Mode:** Automatically triggered if any waiting EV has a pre-booked reservation or critical battery ($\text{SoC} \le 20\%$).
+  * **SJF Congestion Mode:** If waiting queue size $\ge 3$ vehicles without reservations.
+  * **FCFS Normal Mode:** Under light load without reservations or critical emergencies.
 
 ### 3. Concurrency, Mutexes & Deadlock Prevention
 * **Mutual Exclusion (`std::mutex`):** Protects critical sections to prevent race conditions where multiple requests attempt to claim the same charger or exceed station remaining power.
@@ -127,7 +128,7 @@ The database schema (`dbos_ev`) is normalized to Third Normal Form (3NF) across 
 3. **`EV`**: Electric vehicles (Model, battery capacity, current SoC %, location FK).
 4. **`STATION`**: Charging stations (Total grid power, location FK, status).
 5. **`CHARGER`**: Ports/sockets (Connector type, power capacity, status, station FK).
-6. **`CHARGING_REQUEST`**: OS Process records (Arrival time, energy, power, SoC, process state).
+6. **`CHARGING_REQUEST`**: OS Process records (Arrival time, energy, power, SoC, is_reserved flag, process state).
 7. **`RESOURCE_ALLOCATION`**: Active hardware claims (Allocated power, timestamps, status).
 8. **`CHARGING_SESSION`**: Real-time session execution (Energy consumed, duration, status).
 9. **`SYSTEM_LOG`**: Immutable system audit trail (Event types: `PROCESS_CREATED`, `SCHEDULING`, `ALLOCATION_SUCCESS`, `CHARGING_STARTED`, `CHARGING_COMPLETED`, `RESOURCE_RELEASED`, `TRANSACTION_ROLLBACK`).
@@ -249,14 +250,11 @@ python backend/main.py
   [5]  View All Charging Requests
   [6]  View Waiting Processes (OS Process Management)
   [7]  Run Intelligent Auto-Scheduler (Automatic Selection)
-  [8]  Run FCFS Scheduling (Manual)
-  [9]  Run Non-Preemptive SJF Scheduling (Manual)
-  [10] Run Non-Preemptive Priority Scheduling (Manual)
-  [11] Run Resource Allocation
-  [12] Run Synchronization & Deadlock Prevention
-  [13] Charging Sessions & OS Performance Metrics
-  [14] Auto-Simulate & Release All Charging Sessions
-  [15] Exit
+  [8]  Run Resource Allocation
+  [9]  Run Synchronization & Deadlock Prevention
+  [10] Charging Sessions & OS Performance Metrics
+  [11] Auto-Simulate & Release All Charging Sessions
+  [12] Exit
 =================================================================
 ```
 
