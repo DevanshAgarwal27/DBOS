@@ -10,7 +10,27 @@ backend_dir = os.path.dirname(os.path.abspath(__file__))
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
+from datetime import datetime, timedelta
 from db import execute_select, execute_modify
+
+GRACE_PERIOD_MINUTES = 15
+
+
+def is_reservation_active(request):
+    """
+    Checks if a reservation is active within its designated window + 15 min grace period.
+    """
+    if not request.get("is_reserved"):
+        return False
+    slot_time = request.get("reserved_slot_time")
+    if not slot_time:
+        return True
+    if isinstance(slot_time, str):
+        try:
+            slot_time = datetime.strptime(slot_time, "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return True
+    return datetime.now() <= (slot_time + timedelta(minutes=GRACE_PERIOD_MINUTES))
 
 
 def get_all_requests():
@@ -28,6 +48,7 @@ def get_all_requests():
             r.requested_power,
             r.soc_at_request,
             r.is_reserved,
+            r.reserved_slot_time,
             r.process_state
         FROM CHARGING_REQUEST r
         JOIN EV e ON r.ev_id = e.ev_id
@@ -37,11 +58,27 @@ def get_all_requests():
     try:
         return execute_select(query)
     except Exception:
-        fallback_query = query.replace("r.is_reserved,\n", "")
+        fallback_query = """
+            SELECT 
+                r.request_id,
+                r.ev_id,
+                e.model,
+                u.username,
+                r.arrival_time,
+                r.required_energy,
+                r.requested_power,
+                r.soc_at_request,
+                r.is_reserved,
+                r.process_state
+            FROM CHARGING_REQUEST r
+            JOIN EV e ON r.ev_id = e.ev_id
+            JOIN APP_USER u ON e.user_id = u.user_id
+            ORDER BY r.request_id ASC;
+        """
         rows = execute_select(fallback_query)
         if rows:
             for row in rows:
-                row["is_reserved"] = False
+                row["reserved_slot_time"] = None
         return rows
 
 
@@ -51,60 +88,64 @@ def display_requests():
     Prevents long usernames or models from misaligning the table.
     """
     requests = get_all_requests()
-    width = 112
+    width = 118
     print("\n" + "=" * width)
-    print(f"{'Req ID':<7} | {'EV Model':<20} | {'Owner':<14} | {'Energy':>8} | {'Power':>8} | {'SoC':>6} | {'Burst':>7} | {'Type':<9} | {'State':<10}")
+    print(f"{'Req ID':<7} | {'EV Model':<18} | {'Owner':<12} | {'Energy':>7} | {'Power':>7} | {'SoC':>6} | {'Burst':>6} | {'Booking Type':<16} | {'State':<10}")
     print("=" * width)
     if not requests:
         print("No charging requests found in the database.")
     else:
         for r in requests:
             req_id_str = f"P{r['request_id']}"
-            model = str(r["model"])[:20]
-            owner = str(r["username"])[:14]
+            model = str(r["model"])[:18]
+            owner = str(r["username"])[:12]
             req_energy = float(r["required_energy"])
             req_power = float(r["requested_power"])
             soc = float(r["soc_at_request"])
             burst_time = req_energy / req_power if req_power > 0 else 0.0
             is_res = bool(r.get("is_reserved", False))
-            booking_type = "RESERVED" if is_res else "WALK-IN"
+            if is_res:
+                active = is_reservation_active(r)
+                booking_type = "RESERVED (Active)" if active else "EXPIRED (Late)"
+            else:
+                booking_type = "WALK-IN"
+
             state = str(r["process_state"])[:10]
 
             print(
                 f"{req_id_str:<7} | "
-                f"{model:<20} | "
-                f"{owner:<14} | "
-                f"{req_energy:>6.2f}kW | "
-                f"{req_power:>6.2f}kW | "
+                f"{model:<18} | "
+                f"{owner:<12} | "
+                f"{req_energy:>5.1f}kW | "
+                f"{req_power:>5.1f}kW | "
                 f"{soc:>5.1f}% | "
-                f"{burst_time:>6.2f}h | "
-                f"{booking_type:<9} | "
+                f"{burst_time:>5.2f}h | "
+                f"{booking_type:<16} | "
                 f"{state:<10}"
             )
     print("=" * width + "\n")
 
 
-def create_charging_request(ev_id, required_energy, requested_power, soc_at_request, is_reserved=False):
+def create_charging_request(ev_id, required_energy, requested_power, soc_at_request, is_reserved=False, reserved_slot_time=None):
     """
     Inserts a new charging request process into CHARGING_REQUEST table with default state 'WAITING'.
-    Supports is_reserved flag for prior bookings.
+    Supports is_reserved flag and designated reserved_slot_time.
     Returns True on success, False on failure.
     """
-    query_with_reserved = """
-        INSERT INTO CHARGING_REQUEST (ev_id, required_energy, requested_power, soc_at_request, is_reserved, process_state)
-        VALUES (%s, %s, %s, %s, %s, 'WAITING');
+    query_full = """
+        INSERT INTO CHARGING_REQUEST (ev_id, required_energy, requested_power, soc_at_request, is_reserved, reserved_slot_time, process_state)
+        VALUES (%s, %s, %s, %s, %s, %s, 'WAITING');
     """
     try:
-        execute_modify(query_with_reserved, (ev_id, required_energy, requested_power, soc_at_request, is_reserved))
+        execute_modify(query_full, (ev_id, required_energy, requested_power, soc_at_request, is_reserved, reserved_slot_time))
         return True
     except Exception:
-        # Fallback if column not yet added to live DB
         fallback_query = """
-            INSERT INTO CHARGING_REQUEST (ev_id, required_energy, requested_power, soc_at_request, process_state)
-            VALUES (%s, %s, %s, %s, 'WAITING');
+            INSERT INTO CHARGING_REQUEST (ev_id, required_energy, requested_power, soc_at_request, is_reserved, process_state)
+            VALUES (%s, %s, %s, %s, %s, 'WAITING');
         """
         try:
-            execute_modify(fallback_query, (ev_id, required_energy, requested_power, soc_at_request))
+            execute_modify(fallback_query, (ev_id, required_energy, requested_power, soc_at_request, is_reserved))
             return True
         except Exception as e:
             print(f"[ERROR] Could not create charging request: {e}")
@@ -207,17 +248,36 @@ def create_request_interactive():
     burst_time = round(required_energy / requested_power, 2)
     burst_mins = round(burst_time * 60.0, 1)
 
-    print("\n--- Step 3: Booking Type & OS Priority Classification ---")
+    print("\n--- Step 3: Booking Type & Designated Arrival Time ---")
     booking_input = input("Has this charger slot been pre-booked in advance? (y/N): ").strip().lower()
     is_reserved = booking_input in ["y", "yes", "1", "true"]
-    booking_label = "RESERVED (Priority Boost)" if is_reserved else "WALK-IN (Standard)"
+    reserved_slot_time = None
+
+    if is_reserved:
+        time_input = input(f"Enter designated arrival time (HH:MM) [Press Enter for immediate now]: ").strip()
+        if time_input:
+            try:
+                from datetime import time
+                today = datetime.now().date()
+                h, m = map(int, time_input.split(":"))
+                reserved_slot_time = datetime.combine(today, time(h, m))
+            except Exception:
+                reserved_slot_time = datetime.now()
+        else:
+            reserved_slot_time = datetime.now()
+
+        expiry_dt = reserved_slot_time + timedelta(minutes=GRACE_PERIOD_MINUTES)
+        booking_label = f"RESERVED (Slot: {reserved_slot_time.strftime('%H:%M')}, Expiry: {expiry_dt.strftime('%H:%M')})"
+    else:
+        booking_label = "WALK-IN (Standard)"
+
     print(f"-> Classified as: {booking_label}")
 
     print(f"\n[CHARGING ESTIMATE]")
     print(f"  Requested Power  : {requested_power:.2f} kW ({connector_type})")
     print(f"  OS Burst Time    : {required_energy:.2f} kWh / {requested_power:.2f} kW = {burst_time:.2f} hrs ({burst_mins:.1f} mins)\n")
 
-    success = create_charging_request(ev_id, required_energy, requested_power, current_soc, is_reserved=is_reserved)
+    success = create_charging_request(ev_id, required_energy, requested_power, current_soc, is_reserved=is_reserved, reserved_slot_time=reserved_slot_time)
     if success:
         print("=======================================================")
         print("     [SUCCESS] CHARGING REQUEST CREATED SUCCESSFULLY")

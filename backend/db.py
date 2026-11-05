@@ -99,6 +99,7 @@ def get_waiting_requests():
             r.requested_power,
             r.soc_at_request,
             r.is_reserved,
+            r.reserved_slot_time,
             r.process_state
         FROM CHARGING_REQUEST r
         JOIN EV e ON r.ev_id = e.ev_id
@@ -110,11 +111,26 @@ def get_waiting_requests():
         return rows if rows is not None else []
     except Exception:
         try:
-            fallback_query = query.replace("r.is_reserved,\n", "")
+            fallback_query = """
+                SELECT 
+                    r.request_id,
+                    r.ev_id,
+                    e.model AS ev_model,
+                    r.arrival_time,
+                    r.required_energy,
+                    r.requested_power,
+                    r.soc_at_request,
+                    r.process_state
+                FROM CHARGING_REQUEST r
+                JOIN EV e ON r.ev_id = e.ev_id
+                WHERE r.process_state = 'WAITING'
+                ORDER BY r.arrival_time ASC, r.request_id ASC;
+            """
             rows = execute_select(fallback_query)
             if rows:
                 for row in rows:
                     row["is_reserved"] = False
+                    row["reserved_slot_time"] = None
             return rows if rows is not None else []
         except Exception as e:
             print(f"[ERROR] Database error fetching waiting requests: {e}")

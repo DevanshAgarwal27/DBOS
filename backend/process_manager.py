@@ -9,9 +9,36 @@ Connects MySQL database operations to the compiled C++ executables:
 
 import os
 import subprocess
+from datetime import datetime, timedelta
 from db import get_waiting_requests
 
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+GRACE_PERIOD_MINUTES = 15
+
+
+def is_reservation_active(request):
+    """
+    Checks if a pre-booked reservation is still valid or has expired.
+    A reservation is valid if:
+      - is_reserved is True
+      - AND current time <= reserved_slot_time + GRACE_PERIOD_MINUTES (15 mins).
+    If reserved_slot_time is NULL, assumes immediate valid reservation.
+    """
+    if not request.get("is_reserved"):
+        return False
+
+    slot_time = request.get("reserved_slot_time")
+    if not slot_time:
+        return True
+
+    if isinstance(slot_time, str):
+        try:
+            slot_time = datetime.strptime(slot_time, "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return True
+
+    expiry_time = slot_time + timedelta(minutes=GRACE_PERIOD_MINUTES)
+    return datetime.now() <= expiry_time
 
 
 def run_program(exe_name, input_data):
@@ -59,17 +86,18 @@ def format_for_scheduler(requests):
         bt = round(float(r["required_energy"]) / power, 2) if power > 0 else 0.0
         
         soc = float(r.get("soc_at_request", 50.0))
-        is_reserved = bool(r.get("is_reserved", False))
+        is_res = bool(r.get("is_reserved", False))
+        res_active = is_reservation_active(r) if is_res else False
 
         # OS Two-Tier Priority Score (Lower Score = Higher Priority):
-        # Tier 1 (< 100): Pre-booked reservations & Critical Emergencies (SoC <= 20%)
-        # Tier 2 (>= 100): Standard Walk-in requests
-        if is_reserved:
-            pr = round(soc * 0.5, 1)       # Pre-booked reservation priority boost (Score 0-50)
+        # Tier 1 (< 100): ACTIVE Pre-booked reservations & Critical Emergencies (SoC <= 20%)
+        # Tier 2 (>= 100): Standard Walk-in requests OR Expired Reservations
+        if is_res and res_active:
+            pr = round(soc * 0.5, 1)       # Tier 1: Active reservation within grace period (Score 0-50)
         elif soc <= 20.0:
-            pr = round(soc, 1)             # Emergency low battery (Score 0-20)
+            pr = round(soc, 1)             # Tier 1: Emergency low battery (Score 0-20)
         else:
-            pr = round(100.0 + soc, 1)     # Standard walk-in (Score 120-200)
+            pr = round(100.0 + soc, 1)     # Tier 2: Standard walk-in or expired reservation (Score 120-200)
 
         lines.append(f"{pid} {ev_id} {model} {at:.2f} {bt:.2f} {pr:.1f}")
 
@@ -113,18 +141,21 @@ def run_intelligent_auto_scheduler():
         print("\nNo waiting charging requests found in the database queue.\n")
         return
 
-    reserved = [r for r in requests if bool(r.get("is_reserved", False))]
+    active_reserved = [r for r in requests if is_reservation_active(r)]
+    expired_reserved = [r for r in requests if bool(r.get("is_reserved")) and not is_reservation_active(r)]
     critical = [r for r in requests if float(r.get("soc_at_request", 100)) <= 20]
 
-    if reserved or critical:
+    if active_reserved or critical:
         selected = "priority"
         algo_name = "Non-Preemptive Priority Scheduling"
-        if reserved and critical:
-            reason = f"Priority Override: {len(reserved)} pre-booked reservation(s) and {len(critical)} critical battery emergency(ies) in queue."
-        elif reserved:
-            reason = f"Reservation Priority: {len(reserved)} pre-booked charger slot(s) must be honored."
-        else:
-            reason = "Emergency Alert: One or more EVs have critical battery (SoC <= 20%)."
+        reasons = []
+        if active_reserved:
+            reasons.append(f"{len(active_reserved)} active pre-booked reservation(s) within grace period")
+        if critical:
+            reasons.append(f"{len(critical)} critical battery emergency(ies)")
+        reason = "Priority Mode: " + " & ".join(reasons) + " detected."
+        if expired_reserved:
+            reason += f" ({len(expired_reserved)} expired reservation(s) downgraded to walk-in)."
     elif len(requests) >= 3:
         selected = "sjf"
         algo_name = "Non-Preemptive Shortest Job First (SJF)"

@@ -66,6 +66,7 @@ CREATE TABLE CHARGING_REQUEST (
     requested_power DECIMAL(10,2) NOT NULL,
     soc_at_request DECIMAL(5,2) NOT NULL,
     is_reserved BOOLEAN NOT NULL DEFAULT FALSE,
+    reserved_slot_time DATETIME NULL,
     process_state VARCHAR(20) NOT NULL DEFAULT 'WAITING',
     CONSTRAINT chk_request_energy CHECK (required_energy > 0.00),
     CONSTRAINT chk_request_power CHECK (requested_power > 0.00),
