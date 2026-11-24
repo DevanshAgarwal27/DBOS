@@ -13,6 +13,7 @@ if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
 from db import get_resource_allocation_inputs, commit_resource_allocations_atomic
+from process_manager import select_scheduling_strategy, compute_effective_priority
 
 
 def run_resource_allocation():
@@ -27,6 +28,23 @@ def run_resource_allocation():
         print("       All requests have already been served or none exist.\n")
         return
 
+    strategy_exe, algo_name, _ = select_scheduling_strategy(requests)
+    if strategy_exe == "priority":
+        requests = sorted(
+            requests,
+            key=lambda r: (compute_effective_priority(r)[0], r["arrival_time"], r["request_id"])
+        )
+    elif strategy_exe == "sjf":
+        requests = sorted(
+            requests,
+            key=lambda r: (
+                float(r["required_energy"]) / float(r["requested_power"]) if float(r["requested_power"]) > 0 else 9999.0,
+                r["arrival_time"],
+                r["request_id"]
+            )
+        )
+
+    print(f"-> Dispatch Strategy: {algo_name}")
     print(f"-> Found {len(requests)} waiting request(s), {len(stations)} active station(s), {len(chargers)} available charger(s).\n")
 
     lines = []

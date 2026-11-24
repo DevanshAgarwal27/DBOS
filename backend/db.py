@@ -68,7 +68,7 @@ def execute_modify(query, params=None):
         else:
             cursor.execute(query)
         conn.commit()
-        return cursor.rowcount
+        return cursor.lastrowid if cursor.lastrowid else cursor.rowcount
     except Exception as e:
         if conn is not None:
             conn.rollback()
@@ -94,6 +94,8 @@ def get_waiting_requests():
             r.request_id,
             r.ev_id,
             e.model AS ev_model,
+            e.battery_capacity,
+            u.username,
             r.arrival_time,
             r.required_energy,
             r.requested_power,
@@ -103,7 +105,8 @@ def get_waiting_requests():
             r.process_state
         FROM CHARGING_REQUEST r
         JOIN EV e ON r.ev_id = e.ev_id
-        WHERE r.process_state = 'WAITING'
+        JOIN APP_USER u ON e.user_id = u.user_id
+        WHERE r.process_state IN ('WAITING', 'READY')
         ORDER BY r.arrival_time ASC, r.request_id ASC;
     """
     try:
@@ -116,6 +119,8 @@ def get_waiting_requests():
                     r.request_id,
                     r.ev_id,
                     e.model AS ev_model,
+                    e.battery_capacity,
+                    u.username,
                     r.arrival_time,
                     r.required_energy,
                     r.requested_power,
@@ -123,7 +128,8 @@ def get_waiting_requests():
                     r.process_state
                 FROM CHARGING_REQUEST r
                 JOIN EV e ON r.ev_id = e.ev_id
-                WHERE r.process_state = 'WAITING'
+                JOIN APP_USER u ON e.user_id = u.user_id
+                WHERE r.process_state IN ('WAITING', 'READY')
                 ORDER BY r.arrival_time ASC, r.request_id ASC;
             """
             rows = execute_select(fallback_query)
@@ -153,11 +159,29 @@ def get_resource_allocation_inputs():
             r.required_energy,
             r.requested_power,
             r.soc_at_request,
+            r.is_reserved,
+            r.reserved_slot_time,
             r.process_state,
             e.current_location_id AS location_id
         FROM CHARGING_REQUEST r
         JOIN EV e ON r.ev_id = e.ev_id
-        WHERE r.process_state = 'WAITING'
+        WHERE r.process_state IN ('WAITING', 'READY')
+        ORDER BY r.arrival_time ASC, r.request_id ASC;
+    """
+    fallback_req_query = """
+        SELECT 
+            r.request_id,
+            r.ev_id,
+            e.model AS ev_model,
+            r.arrival_time,
+            r.required_energy,
+            r.requested_power,
+            r.soc_at_request,
+            r.process_state,
+            e.current_location_id AS location_id
+        FROM CHARGING_REQUEST r
+        JOIN EV e ON r.ev_id = e.ev_id
+        WHERE r.process_state IN ('WAITING', 'READY')
         ORDER BY r.arrival_time ASC, r.request_id ASC;
     """
 
@@ -192,7 +216,13 @@ def get_resource_allocation_inputs():
         ORDER BY c.charger_id ASC;
     """
 
-    requests = execute_select(req_query) or []
+    try:
+        requests = execute_select(req_query) or []
+    except Exception:
+        requests = execute_select(fallback_req_query) or []
+        for r in requests:
+            r["is_reserved"] = False
+            r["reserved_slot_time"] = None
     stations = execute_select(station_query) or []
     chargers = execute_select(charger_query) or []
 
@@ -248,8 +278,8 @@ def commit_resource_allocations_atomic(proposals, rejections=None):
                     (req_id,)
                 )
                 req_row = cursor.fetchone()
-                if not req_row or req_row["process_state"] != "WAITING":
-                    raise ValueError(f"Request {req_id} is no longer in WAITING state.")
+                if not req_row or req_row["process_state"] not in ("WAITING", "READY"):
+                    raise ValueError(f"Request {req_id} is no longer in WAITING or READY state.")
 
                 cursor.execute(
                     "SELECT charger_id, station_id, power_capacity, status FROM CHARGER WHERE charger_id = %s FOR UPDATE;",
@@ -434,13 +464,18 @@ def get_in_progress_sessions():
             s.station_name,
             ra.allocated_power,
             r.required_energy,
-            e.model AS ev_model
+            r.soc_at_request,
+            e.ev_id,
+            e.model AS ev_model,
+            e.battery_capacity,
+            u.username
         FROM CHARGING_SESSION cs
         JOIN RESOURCE_ALLOCATION ra ON cs.allocation_id = ra.allocation_id
         JOIN CHARGER c ON ra.charger_id = c.charger_id
         JOIN STATION s ON c.station_id = s.station_id
         JOIN CHARGING_REQUEST r ON ra.request_id = r.request_id
         JOIN EV e ON r.ev_id = e.ev_id
+        JOIN APP_USER u ON e.user_id = u.user_id
         WHERE cs.status = 'IN_PROGRESS'
         ORDER BY cs.session_id ASC;
     """

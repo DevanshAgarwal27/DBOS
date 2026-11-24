@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DBOS EV Charging Control Plane | Operating System & Database Co-Design</title>
+  <link rel="stylesheet" href="css/style.css?v=7">
+</head>
+<body>
+
+  <!-- Top System Header -->
+  <header class="top-header">
+    <div class="brand-section">
+      <div class="brand-icon">⚡</div>
+      <div>
+        <div class="brand-title">DBOS EV Control Plane</div>
+        <div class="brand-subtitle">Operating System & Database Co-Design Architecture</div>
+      </div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <button type="button" id="btnToggleGuide" class="btn btn-secondary guide-toggle-btn" title="Show or hide beginner step-by-step guide">
+        ? Quick Guide
+      </button>
+      <div class="system-status-badge">
+        <span class="status-dot" id="serverStatusDot"></span>
+        <span id="serverStatusText">CHECKING...</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Top Real-Time KPI Telemetry Banner (Genuine Backend Data) -->
+  <section class="telemetry-banner">
+    <div class="kpi-grid">
+      <!-- Total Power -->
+      <div class="kpi-card">
+        <span class="kpi-label">Station Capacity</span>
+        <div class="kpi-value-row">
+          <span class="kpi-value" id="kpiTotalPower">--</span>
+          <span class="kpi-unit">kW</span>
+        </div>
+        <span class="kpi-sub">Total Grid Power</span>
+      </div>
+
+      <!-- Allocated / Used Power -->
+      <div class="kpi-card">
+        <span class="kpi-label">Allocated Power</span>
+        <div class="kpi-value-row">
+          <span class="kpi-value" id="kpiUsedPower">--</span>
+          <span class="kpi-unit">kW</span>
+        </div>
+        <span class="kpi-sub" id="kpiPowerUtil">--% Utilization</span>
+      </div>
+
+      <!-- Remaining Headroom Power -->
+      <div class="kpi-card">
+        <span class="kpi-label">Headroom Power</span>
+        <div class="kpi-value-row">
+          <span class="kpi-value" id="kpiRemainingPower">--</span>
+          <span class="kpi-unit">kW</span>
+        </div>
+        <span class="kpi-sub">Available Power</span>
+      </div>
+
+      <!-- Available Chargers -->
+      <div class="kpi-card">
+        <span class="kpi-label">Available Ports</span>
+        <div class="kpi-value-row">
+          <span class="kpi-value" id="kpiChargersAvail">--</span>
+          <span class="kpi-unit">Ports</span>
+        </div>
+        <span class="kpi-sub">State: AVAILABLE</span>
+      </div>
+
+      <!-- Occupied Chargers -->
+      <div class="kpi-card">
+        <span class="kpi-label">Occupied Ports</span>
+        <div class="kpi-value-row">
+          <span class="kpi-value" id="kpiChargersOcc">--</span>
+          <span class="kpi-unit">Ports</span>
+        </div>
+        <span class="kpi-sub">State: OCCUPIED</span>
+      </div>
+
+      <!-- Waiting Queue Requests -->
+      <div class="kpi-card">
+        <span class="kpi-label">Ready Queue</span>
+        <div class="kpi-value-row">
+          <span class="kpi-value" id="kpiWaitingQueue">--</span>
+          <span class="kpi-unit">PCBs</span>
+        </div>
+        <span class="kpi-sub">State: WAITING</span>
+      </div>
+
+      <!-- Active Charging Sessions -->
+      <div class="kpi-card">
+        <span class="kpi-label">Active Sessions</span>
+        <div class="kpi-value-row">
+          <span class="kpi-value" id="kpiActiveSessions">--</span>
+          <span class="kpi-unit">Sessions</span>
+        </div>
+        <span class="kpi-sub">State: IN_PROGRESS</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Navigation Tabs -->
+  <nav class="nav-container">
+    <ul class="nav-tabs">
+      <li>
+        <button class="nav-tab-btn active" data-tab="tab-dashboard">
+          <span>System Dashboard</span>
+          <span class="tab-badge">OS & Telemetry</span>
+        </button>
+      </li>
+      <li>
+        <button class="nav-tab-btn" data-tab="tab-registration">
+          <span>User & EV Registration</span>
+          <span class="tab-badge">Workload Injection</span>
+        </button>
+      </li>
+      <li>
+        <button class="nav-tab-btn" data-tab="tab-admission">
+          <span>Charging Request Admission</span>
+          <span class="tab-badge">Process Admission</span>
+        </button>
+      </li>
+    </ul>
+  </nav>
+
+  <!-- Workspace Container -->
+  <main class="workspace">
+
+    <!-- Beginner Quick-Start Guide -->
+    <div id="quickstartBanner" class="quickstart-banner">
+      <div class="quickstart-header">
+        <div class="quickstart-title">👋 Beginner Quick Guide — Follow These 4 Simple Steps (Click any step to jump)</div>
+        <button type="button" id="btnHideGuide" class="btn btn-secondary" style="padding: 3px 9px; font-size: 10.5px;">Hide Guide</button>
+      </div>
+      <div class="quickstart-grid">
+        <button type="button" class="quickstart-step" data-goto-tab="tab-registration">
+          <span class="quickstart-step-num">Step 1 · Optional</span>
+          <span class="quickstart-step-label">User &amp; EV Registration</span>
+          <span class="quickstart-step-desc">Save a new driver &amp; car in the database (skip if already saved).</span>
+        </button>
+        <button type="button" class="quickstart-step" data-goto-tab="tab-admission">
+          <span class="quickstart-step-num">Step 2 · Submit Request</span>
+          <span class="quickstart-step-label">Charging Request Admission</span>
+          <span class="quickstart-step-desc">Enter owner name, pick EV type, set current &amp; target % to join queue.</span>
+        </button>
+        <button type="button" class="quickstart-step" data-goto-tab="tab-dashboard" data-scroll-to="step6SchedulerCard">
+          <span class="quickstart-step-num">Step 3 · Schedule &amp; Plug In</span>
+          <span class="quickstart-step-label">Schedule &amp; Allocate Chargers</span>
+          <span class="quickstart-step-desc">Run <strong>Auto-Scheduler</strong>, then click <strong>Allocate Chargers</strong> to charge.</span>
+        </button>
+        <button type="button" class="quickstart-step" data-goto-tab="tab-dashboard" data-scroll-to="step6SchedulerCard">
+          <span class="quickstart-step-num">Step 4 · Complete</span>
+          <span class="quickstart-step-label">Auto-Simulate &amp; Release</span>
+          <span class="quickstart-step-desc">Click <strong>Auto-Simulate &amp; Release</strong> to finish &amp; free ports for next car.</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- TAB 1: SYSTEM DASHBOARD (Ready Queue, Telemetry, Auto-Scheduler) -->
+    <section id="tab-dashboard" class="tab-content active">
+
+      <!-- Card 1: Physical Station Hardware & Transformer Load -->
+      <div class="dbos-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2 class="card-title">Charging Station Power Grid & Socket Hardware</h2>
+            <p class="card-subtitle">Real-time telemetry from STATION and CHARGER tables in MySQL</p>
+          </div>
+          <div style="font-family: var(--font-mono); font-size: 12px; color: #34d399;" id="dashPowerText">
+            0 kW / 360 kW (0% Load)
+          </div>
+        </div>
+
+        <!-- Power Progress Bar -->
+        <div style="background: #0d131f; height: 10px; border-radius: 9999px; overflow: hidden; margin-bottom: 14px; border: 1px solid var(--border-color);">
+          <div id="dashPowerBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #3b82f6, #10b981); transition: width 0.4s ease;"></div>
+        </div>
+
+        <div class="hardware-capsule-grid">
+          <div class="hardware-capsule">
+            <span class="kpi-label">Available Charger Ports</span>
+            <strong style="color: #34d399; font-size: 16px;" id="dashAvailPorts">7 Available</strong>
+            <span class="kpi-sub">Ready to plug-in</span>
+          </div>
+          <div class="hardware-capsule">
+            <span class="kpi-label">Occupied Charger Ports</span>
+            <strong style="color: #60a5fa; font-size: 16px;" id="dashOccPorts">0 Occupied</strong>
+            <span class="kpi-sub">Delivering power</span>
+          </div>
+          <div class="hardware-capsule">
+            <span class="kpi-label">Active Charging Sessions</span>
+            <strong style="color: #c084fc; font-size: 16px;" id="dashActiveSessions">0 Sessions Active</strong>
+            <span class="kpi-sub">CHARGING_SESSION table</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 2: OS Process Control Block (PCB) Ready Queue Table -->
+      <div class="dbos-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2 class="card-title">OS Process Ready Queue (PCB Inspector)</h2>
+            <p class="card-subtitle">Waiting processes scheduled for charger allocation and CPU dispatch (click any row to view its battery graph)</p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span class="badge badge-waiting" id="queueCountBadge">-- PCBs in Ready Queue</span>
+            <button type="button" id="btnRefreshQueue" class="btn btn-secondary" title="Refresh Ready Queue">
+              🔄 Refresh Queue
+            </button>
+          </div>
+        </div>
+
+        <!-- PCB Table -->
+        <div class="table-responsive">
+          <table class="dbos-table">
+            <thead>
+              <tr>
+                <th>Process ID (PID)</th>
+                <th>EV Model (Asset)</th>
+                <th>Arrival Time (AT)</th>
+                <th>Burst Time (BT)</th>
+                <th>Battery SoC</th>
+                <th>Priority Score</th>
+                <th>Tier SLA</th>
+                <th>Process State</th>
+              </tr>
+            </thead>
+            <tbody id="queueTableBody">
+              <tr>
+                <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                  Loading Process Control Blocks from queue...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Operating System Logic Legend -->
+        <div style="margin-top: 14px; font-size: 11px; color: var(--text-secondary); display: flex; gap: 16px; flex-wrap: wrap; align-items: center;">
+          <div><strong style="color: #c084fc;">Tier 1 (&lt; 100):</strong> Pre-booked Reservation (SoC &times; 0.5) OR Critical Battery (SoC &le; 20%)</div>
+          <div><strong style="color: #cbd5e1;">Tier 2 (&ge; 100):</strong> Standard Walk-in OR Expired Reservation (100 + SoC)</div>
+          <div><strong style="color: #fbbf24;">Anti-Starvation Aging:</strong> Wait &gt; 10m boosts priority (-5 pts/min)</div>
+          <div><strong style="color: #60a5fa;">CPU Burst Time:</strong> <span class="formula-inline">BT = Required Energy &divide; Requested Power</span></div>
+        </div>
+      </div>
+
+      <!-- Card 3: Real-Time Battery Progress & Telemetry Trajectory Curve -->
+      <div class="dbos-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2 class="card-title">Battery Telemetry Progress &amp; Charging Trajectory Curve</h2>
+            <p class="card-subtitle">Real-time visual battery gauge and mathematical curve: <span class="formula-inline">SoC(t) = SoC&#8320; + ((P &times; t) &divide; C) &times; 100</span></p>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <span class="badge badge-running" id="telemetryStreamStatus" style="font-size: 11px;">⚡ LIVE CHARGING STREAM</span>
+            <button type="button" class="btn btn-secondary" id="btnResetTelemetry" style="padding: 4px 10px; font-size: 11px;" title="Reset Live Telemetry Simulation">↺ Reset Sim</button>
+          </div>
+        </div>
+
+        <!-- Visual Battery Gauge -->
+        <div class="battery-gauge-container">
+          <div class="battery-visual-shell">
+            <div id="batteryVisualFill" class="battery-visual-fill fill-medium" style="width: 0%;">0%</div>
+          </div>
+          <div>
+            <div style="font-weight: 700; font-size: 14px; color: #ffffff;" id="batteryVehicleTitle">
+              Awaiting Process Selection...
+            </div>
+            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;" id="batteryTelemetryInfo">
+              Select a process from the Ready Queue to inspect telemetry.
+            </div>
+          </div>
+          <div style="margin-left: auto; text-align: right;">
+            <div style="font-size: 20px; font-weight: 700; color: #60a5fa; font-family: var(--font-mono);" id="batteryGaugePct">--%</div>
+            <div style="font-size: 11px; color: var(--text-muted);" id="batteryGaugeTarget">--% Target</div>
+          </div>
+        </div>
+
+        <!-- SVG Curve Telemetry -->
+        <div class="telemetry-chart-wrapper" id="telemetrySvgContainer">
+          <div style="height: 160px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 12px;">
+            Loading battery charging telemetry trajectory...
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 4: C++ Intelligent Auto-Scheduler & Hardware Console Panel -->
+      <div class="dbos-card" id="step6SchedulerCard">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2 class="card-title">C++ Intelligent Auto-Scheduler &amp; Hardware Engine</h2>
+            <p class="card-subtitle">Automated OS decision engine, compiled C++ binaries, and atomic hardware release</p>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" id="btnClearConsole" class="btn btn-secondary" title="Clear console output">
+              Clear Console
+            </button>
+          </div>
+        </div>
+
+        <!-- Action Control Buttons -->
+        <div style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;">
+          <button type="button" id="btnRunScheduler" class="btn btn-primary" style="font-size: 13px; padding: 10px 18px;" title="Step 1: Preview which order cars will charge using C++ scheduling">
+            ⚡ Run Intelligent Auto-Scheduler (C++)
+          </button>
+          <button type="button" id="btnAllocateResources" class="btn btn-secondary" style="font-size: 13px; padding: 10px 18px; border-color: #3b82f6; color: #93c5fd;" title="Step 2: Assign free chargers and start active charging">
+            🔌 Allocate Chargers &amp; Hardware Dispatch
+          </button>
+          <button type="button" id="btnSimulateRelease" class="btn btn-emerald" style="font-size: 13px; padding: 10px 18px;" title="Step 3: Finish active charging sessions and release ports">
+            🔄 Auto-Simulate &amp; Release Chargers
+          </button>
+        </div>
+
+        <!-- Decision Banner -->
+        <div id="schedulerDecisionBox" style="display: none; background: #0b111c; border: 1px solid rgba(59, 130, 246, 0.4); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 14px;">
+          <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <div>Algorithm Selected: <strong id="schedAlgoName" style="color: #60a5fa;">--</strong></div>
+            <div>Binary: <span class="badge badge-running" id="schedBinaryName">--.exe</span></div>
+            <div style="color: var(--text-secondary); font-size: 11px;" id="schedReasonText">--</div>
+          </div>
+        </div>
+
+        <!-- Terminal Console Panel -->
+        <div style="position: relative;">
+          <pre id="schedulerConsole" class="terminal-panel">=================================================================
+  DBOS C++ SCHEDULER & CONSOLE PANEL READY
+=================================================================
+  Click [⚡ Run Intelligent Auto-Scheduler (C++)] to execute.
+  The engine will dynamically evaluate queue conditions:
+    - Critical Battery (SoC &le; 20%) or Active Reservations &rarr; Priority Mode
+    - Congestion (&ge; 3 Waiting EVs) &rarr; Shortest Job First (SJF)
+    - Normal Queue Load &rarr; First Come, First Served (FCFS)
+=================================================================</pre>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- TAB 2: USER & EV REGISTRATION (Workload Injection Port) -->
+    <section id="tab-registration" class="tab-content">
+      
+      <!-- Card 1: Registration Form -->
+      <div class="dbos-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2 class="card-title">User &amp; EV Registration (Workload Injection Port)</h2>
+            <p class="card-subtitle">Save a new driver and electric vehicle into the MySQL database fleet directory</p>
+          </div>
+        </div>
+
+        <form id="evRegistrationForm">
+          <div class="form-grid">
+            <!-- User Details -->
+            <div class="form-group">
+              <label class="form-label" for="regUsername">Owner Username</label>
+              <input type="text" id="regUsername" class="form-control" placeholder="e.g. Amit Gupta" required>
+              <span class="form-hint">Driver's name stored in APP_USER table</span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="regEmail">Owner Email Address</label>
+              <input type="email" id="regEmail" class="form-control" placeholder="e.g. amit@gmail.com" required>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="regPhone">Phone Number</label>
+              <input type="tel" id="regPhone" class="form-control" placeholder="e.g. 9876543210" required>
+            </div>
+
+            <!-- EV Details -->
+            <div class="form-group">
+              <label class="form-label" for="regModelSelect">EV Model</label>
+              <select id="regModelSelect" class="form-control" required>
+                <option value="" disabled selected>Loading verified catalogue...</option>
+              </select>
+              <span class="form-hint">Auto-fills verified battery capacity (kWh)</span>
+            </div>
+
+            <!-- Custom Model Group (Hidden unless Custom chosen) -->
+            <div class="form-group" id="customModelGroup" style="display: none;">
+              <label class="form-label" for="regCustomModel">Custom EV Model Name</label>
+              <input type="text" id="regCustomModel" class="form-control" placeholder="Enter custom model (e.g. Audi e-tron)">
+              <span class="form-hint">Manual model entry for unlisted vehicles</span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="regBatteryCapacity">Battery Capacity (kWh)</label>
+              <input type="number" step="0.01" id="regBatteryCapacity" class="form-control" placeholder="e.g. 40.50" required>
+              <span class="form-hint" id="batteryCapacityHint">Select an EV model to auto-populate.</span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="regCurrentSoc">Current Battery SoC (%)</label>
+              <input type="number" step="0.1" min="0" max="100" id="regCurrentSoc" class="form-control" placeholder="e.g. 25" required>
+              <span class="form-hint">Initial battery percentage right now (0 - 100%)</span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="regLocationSelect">Station Hub Location</label>
+              <select id="regLocationSelect" class="form-control" required>
+                <option value="" disabled selected>Loading locations from DB...</option>
+              </select>
+              <span class="form-hint">Station location from LOCATION table</span>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" id="btnRegisterEV" class="btn btn-primary">
+              ⚡ Register Vehicle &amp; Inject Workload
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Card 2: Live Registered Fleet Directory -->
+      <div class="dbos-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2 class="card-title">Registered Fleet Directory</h2>
+            <p class="card-subtitle">Live records from MySQL tables: EV, APP_USER, and LOCATION</p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span class="badge badge-running" id="fleetCountBadge">-- Vehicles</span>
+            <button type="button" id="btnRefreshFleet" class="btn btn-secondary" title="Refresh Fleet Directory">
+              🔄 Refresh
+            </button>
+          </div>
+        </div>
+
+        <!-- Filter Bar -->
+        <div style="margin-bottom: 14px;">
+          <input type="text" id="fleetSearchInput" class="form-control" placeholder="🔍 Search fleet by model, owner, location, or EV ID...">
+        </div>
+
+        <!-- Fleet Table -->
+        <div class="table-responsive">
+          <table class="dbos-table">
+            <thead>
+              <tr>
+                <th>EV ID</th>
+                <th>Owner (Username)</th>
+                <th>Vehicle Model</th>
+                <th>Battery Capacity</th>
+                <th>Current SoC</th>
+                <th>Operational Status</th>
+                <th>Hub Location</th>
+              </tr>
+            </thead>
+            <tbody id="fleetTableBody">
+              <tr>
+                <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 20px;">
+                  Loading registered fleet from database...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- TAB 3: CHARGING REQUEST ADMISSION (Process Admission & Grace-Period Booking) -->
+    <section id="tab-admission" class="tab-content">
+      
+      <!-- Card 1: Admission Control Form -->
+      <div class="dbos-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2 class="card-title">Charging Request Admission (OS Process Creation)</h2>
+            <p class="card-subtitle">Enter driver name, choose an EV model, set current &amp; target SoC to join the ready queue</p>
+          </div>
+        </div>
+
+        <form id="admitRequestForm" onsubmit="return false;">
+          <!-- Owner & Vehicle Entry Row -->
+          <div class="form-grid" style="margin-bottom: 16px;">
+            <!-- Owner / Driver Name Text Input (with Registered User Autocomplete) -->
+            <div class="form-group">
+              <label class="form-label" for="admitOwnerName">Driver / Owner Name</label>
+              <input type="text" id="admitOwnerName" class="form-control" list="admitUsersDatalist" placeholder="Enter user name (e.g. Amit Gupta)" autocomplete="off" required>
+              <datalist id="admitUsersDatalist"></datalist>
+              <span class="form-hint">Enter the driver's name (auto-suggests registered drivers)</span>
+            </div>
+
+            <!-- Vehicle Selector Dropdown (Strictly EV Types with kWh) -->
+            <div class="form-group">
+              <label class="form-label" for="admitVehicleSelect">Select EV Model &amp; Battery Capacity</label>
+              <select id="admitVehicleSelect" class="form-control" required>
+                <option value="" disabled selected>-- Select an EV Model (with Battery Capacity) --</option>
+              </select>
+              <span class="form-hint">Choose EV model to configure battery capacity (kWh)</span>
+            </div>
+          </div>
+
+          <!-- Selected EV Telemetry Capsule (Appears when owner or vehicle is picked) -->
+          <div id="selectedEvCard" style="display: none; background: #0b111c; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 16px;">
+            <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: center; font-size: 12px;">
+              <div>Owner: <strong id="evOwnerBadge" style="color: #ffffff;">--</strong></div>
+              <div>Selected EV: <strong id="evModelBadge" style="color: #60a5fa;">--</strong></div>
+              <div>Battery Capacity: <strong id="evCapBadge" style="color: #34d399;">--</strong></div>
+              <div>Arrival Battery: <span id="evSocBadge" class="badge badge-waiting">20.0%</span></div>
+            </div>
+            <!-- Alert if Target <= Current -->
+            <div id="batteryFullAlert" style="display: none; margin-top: 8px; padding: 6px 12px; background: rgba(239,68,68,0.15); border: 1px solid #ef4444; border-radius: 4px; color: #fca5a5; font-size: 11px;">
+              ⚠️ Target SoC must be greater than Current Battery SoC.
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <!-- Current Battery SoC Input (Arrival SoC) -->
+            <div class="form-group">
+              <label class="form-label" for="admitCurrentSoc">
+                Current Battery SoC: <strong id="currentSocValue" style="color: #fbbf24;">20%</strong>
+              </label>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="range" id="admitCurrentSoc" class="form-control" min="1" max="95" step="1" value="20" style="flex: 1;">
+                <input type="number" id="admitCurrentSocNum" class="form-control" min="1" max="95" step="1" value="20" style="width: 72px; text-align: center; font-weight: 700;">
+              </div>
+              <div style="display: flex; gap: 6px; margin-top: 6px;">
+                <button type="button" class="btn btn-secondary soc-preset-btn current-soc-preset-btn" data-soc="10">10% Low</button>
+                <button type="button" class="btn btn-secondary soc-preset-btn current-soc-preset-btn" data-soc="20">20% Std</button>
+                <button type="button" class="btn btn-secondary soc-preset-btn current-soc-preset-btn" data-soc="35">35% Mid</button>
+              </div>
+              <span class="form-hint">Battery percentage at arrival</span>
+            </div>
+
+            <!-- Target SoC Input (Dual Slider + Synced Number Input + Presets) -->
+            <div class="form-group">
+              <label class="form-label" for="admitTargetSoc">
+                Target Battery SoC: <strong id="targetSocValue" style="color: #60a5fa;">80%</strong>
+              </label>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="range" id="admitTargetSoc" class="form-control" min="1" max="100" step="1" value="80" style="flex: 1;">
+                <input type="number" id="admitTargetSocNum" class="form-control" min="1" max="100" step="1" value="80" style="width: 72px; text-align: center; font-weight: 700;">
+              </div>
+              <div style="display: flex; gap: 6px; margin-top: 6px;">
+                <button type="button" class="btn btn-secondary soc-preset-btn" data-soc="80">80% Std</button>
+                <button type="button" class="btn btn-secondary soc-preset-btn" data-soc="90">90% Ext</button>
+                <button type="button" class="btn btn-secondary soc-preset-btn" data-soc="100">100% Full</button>
+              </div>
+              <span class="form-hint" id="targetSocHint">Desired charge level (Must be &gt; Current SoC)</span>
+            </div>
+
+            <!-- Charger Power Rating Dropdown -->
+            <div class="form-group">
+              <label class="form-label" for="admitPowerSelect">Charger Power Rating</label>
+              <select id="admitPowerSelect" class="form-control">
+                <option value="22.0">22 kW (AC Type 2 Fast Charger)</option>
+                <option value="50.0" selected>50 kW (DC CCS2 Rapid Charger)</option>
+                <option value="60.0">60 kW (DC CCS2 High-Speed Charger)</option>
+              </select>
+              <span class="form-hint">Higher kW charges the EV faster</span>
+            </div>
+
+            <!-- Booking Type Dropdown (Grace Period Lease) -->
+            <div class="form-group">
+              <label class="form-label" for="admitBookingType">Booking Type</label>
+              <select id="admitBookingType" class="form-control">
+                <option value="WALK-IN" selected>WALK-IN (Standard Queue - FIFO)</option>
+                <option value="RESERVED">RESERVED (Pre-booked with 15-min Grace Lease)</option>
+              </select>
+              <span class="form-hint">Reservations get priority within a 15-minute grace window</span>
+            </div>
+
+            <!-- Reservation Time Group (Hidden unless RESERVED selected) -->
+            <div class="form-group" id="reservationGroup" style="display: none;">
+              <label class="form-label" for="admitSlotTime">Designated Slot Time</label>
+              <input type="datetime-local" id="admitSlotTime" class="form-control">
+              <span class="form-hint" style="color: #c084fc;">★ Valid during slot + 15 min grace window. Late arrival downgrades priority.</span>
+            </div>
+          </div>
+
+          <!-- Live OS Calculation Box (Energy & Burst Time Formula) -->
+          <div class="calc-preview-box">
+            <div class="calc-item">
+              <span class="calc-item-label">Required Energy</span>
+              <span class="calc-item-value" id="calcEnergy">0.00 kWh</span>
+              <span class="calc-item-sub">&Delta;SoC &times; Capacity</span>
+            </div>
+            <div style="font-size: 20px; color: var(--text-muted);">&divide;</div>
+            <div class="calc-item">
+              <span class="calc-item-label">CPU Process Burst Time</span>
+              <span class="calc-item-value" id="calcBurst" style="color: #a78bfa;">0.00 hrs</span>
+              <span class="calc-item-sub" id="calcMinutes">(0 mins)</span>
+            </div>
+            <div class="calc-item">
+              <span class="calc-item-label">OS Queue State</span>
+              <span class="badge badge-waiting" style="font-size: 11px; padding: 4px 10px; margin-top: 4px;">WAITING</span>
+              <span class="calc-item-sub">Ready for Scheduler</span>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" id="btnAdmitRequest" class="btn btn-primary">
+              📥 Admit Process into OS Ready Queue
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Card 2: Master Charging Requests Directory Table -->
+      <div class="dbos-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2 class="card-title">Master Charging Requests Directory</h2>
+            <p class="card-subtitle">All admitted processes in CHARGING_REQUEST table with reservation and state history</p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span class="badge badge-running" id="requestsCountBadge">-- Requests</span>
+            <button type="button" id="btnRefreshRequests" class="btn btn-secondary" title="Refresh Requests">
+              🔄 Refresh
+            </button>
+          </div>
+        </div>
+
+        <!-- Filter & Search Bar -->
+        <div style="display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center;">
+          <input type="text" id="requestsSearchInput" class="form-control" style="flex: 1; min-width: 220px;" placeholder="🔍 Search requests by PID, vehicle model, owner username, or state...">
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <button type="button" class="btn btn-primary req-filter-btn" data-filter="ALL" id="filterBtnAll">
+              All Requests <span class="badge" id="badgeCountAll" style="margin-left: 5px; background: rgba(255,255,255,0.2);">--</span>
+            </button>
+            <button type="button" class="btn btn-secondary req-filter-btn" data-filter="WAITING" id="filterBtnWaiting">
+              🟡 Waiting Queue <span class="badge" id="badgeCountWaiting" style="margin-left: 5px; background: rgba(234,179,8,0.25); color: #fde047;">--</span>
+            </button>
+            <button type="button" class="btn btn-secondary req-filter-btn" data-filter="COMPLETED" id="filterBtnCompleted">
+              🟢 Completed History <span class="badge" id="badgeCountCompleted" style="margin-left: 5px; background: rgba(34,197,94,0.25); color: #86efac;">--</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Requests Table -->
+        <div class="table-responsive">
+          <table class="dbos-table">
+            <thead>
+              <tr>
+                <th>PID</th>
+                <th>EV Model</th>
+                <th>Owner</th>
+                <th>Req Energy</th>
+                <th>Req Power</th>
+                <th>Init SoC</th>
+                <th>Burst Time</th>
+                <th>Booking Type</th>
+                <th>Process State</th>
+              </tr>
+            </thead>
+            <tbody id="requestsTableBody">
+              <tr>
+                <td colspan="9" style="text-align: center; color: var(--text-muted); padding: 20px;">
+                  Loading charging requests from database...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- UI Toast Notifications Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Footer -->
+  <footer class="app-footer">
+    <div>DBOS: Database-Operating System Co-Design Platform &copy; 2026</div>
+    <div>Multi-Threaded Server &bull; MySQL ACID Engine &bull; MinGW C++ Schedulers</div>
+  </footer>
+
+  <script type="module" src="js/app.js?v=7"></script>
+</body>
+</html>
+

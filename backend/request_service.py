@@ -53,7 +53,7 @@ def get_all_requests():
         FROM CHARGING_REQUEST r
         JOIN EV e ON r.ev_id = e.ev_id
         JOIN APP_USER u ON e.user_id = u.user_id
-        ORDER BY r.request_id ASC;
+        ORDER BY r.request_id DESC;
     """
     try:
         return execute_select(query)
@@ -73,7 +73,7 @@ def get_all_requests():
             FROM CHARGING_REQUEST r
             JOIN EV e ON r.ev_id = e.ev_id
             JOIN APP_USER u ON e.user_id = u.user_id
-            ORDER BY r.request_id ASC;
+            ORDER BY r.request_id DESC;
         """
         rows = execute_select(fallback_query)
         if rows:
@@ -130,23 +130,23 @@ def create_charging_request(ev_id, required_energy, requested_power, soc_at_requ
     """
     Inserts a new charging request process into CHARGING_REQUEST table with default state 'WAITING'.
     Supports is_reserved flag and designated reserved_slot_time.
-    Returns True on success, False on failure.
+    Returns generated request_id on success, False on failure.
     """
     query_full = """
         INSERT INTO CHARGING_REQUEST (ev_id, required_energy, requested_power, soc_at_request, is_reserved, reserved_slot_time, process_state)
         VALUES (%s, %s, %s, %s, %s, %s, 'WAITING');
     """
     try:
-        execute_modify(query_full, (ev_id, required_energy, requested_power, soc_at_request, is_reserved, reserved_slot_time))
-        return True
+        new_id = execute_modify(query_full, (ev_id, required_energy, requested_power, soc_at_request, is_reserved, reserved_slot_time))
+        return new_id or True
     except Exception:
         fallback_query = """
             INSERT INTO CHARGING_REQUEST (ev_id, required_energy, requested_power, soc_at_request, is_reserved, process_state)
             VALUES (%s, %s, %s, %s, %s, 'WAITING');
         """
         try:
-            execute_modify(fallback_query, (ev_id, required_energy, requested_power, soc_at_request, is_reserved))
-            return True
+            new_id = execute_modify(fallback_query, (ev_id, required_energy, requested_power, soc_at_request, is_reserved))
+            return new_id or True
         except Exception as e:
             print(f"[ERROR] Could not create charging request: {e}")
             return False
